@@ -32,18 +32,20 @@ You must classify the request into exactly one of these actions:
 - DELETE_S3
 - DELETE_ACCOUNT
 - GREETING
+- EXPLAIN_AWS
 - UNKNOWN
 
 Rules:
-1. If the user is saying hello, greeting you, or asking who you are (e.g. "hi", "hello", "hey", "who are you", "help"), classify as GREETING.
-2. If the request is ambiguous or doesn't match a known AWS CloudOps action or greeting, return UNKNOWN.
-3. Extract any resource identifier or name mentioned (e.g. "test server", "prod bucket") into "target", or null if none given.
-4. Never decide whether an action is allowed or safe — that is NOT your job. You only classify intent. A downstream policy engine handles authorization and risk.
-5. Do not invent AWS resource IDs, account numbers, or data. Only extract what the user actually said.
-6. Output strictly valid JSON in this exact schema:
+1. If the user is asking an informational question, definition, or explanation about AWS services (e.g. "what is ec2", "what is s3", "explain ec2", "how does s3 work", "define ec2"), classify as EXPLAIN_AWS.
+2. If the user is asking to list, show, or check EC2/S3 resources (e.g. "show ec2", "list s3 buckets", "get ec2 status", "display servers"), classify as READ_EC2 or READ_S3.
+3. If the user is saying hello, greeting you, or asking who you are (e.g. "hi", "hello", "hey", "who are you", "help"), classify as GREETING.
+4. Extract any resource identifier or name mentioned (e.g. "test server", "prod bucket") into "target", or null if none given.
+5. Never decide whether an action is allowed or safe — that is NOT your job. You only classify intent. A downstream policy engine handles authorization and risk.
+6. Do not invent AWS resource IDs, account numbers, or data. Only extract what the user actually said.
+7. Output strictly valid JSON in this exact schema:
 
 {
-  "action": "READ_EC2 | READ_S3 | READ_ACCOUNT | STOP_EC2 | START_EC2 | TERMINATE_EC2 | DELETE_S3 | DELETE_ACCOUNT | GREETING | UNKNOWN",
+  "action": "READ_EC2 | READ_S3 | READ_ACCOUNT | STOP_EC2 | START_EC2 | TERMINATE_EC2 | DELETE_S3 | DELETE_ACCOUNT | GREETING | EXPLAIN_AWS | UNKNOWN",
   "target": "string or null",
   "raw_request": "the original user text",
   "confidence": "high | medium | low"
@@ -63,11 +65,20 @@ def _fallback_keyword_parser(user_text: str) -> Dict[str, Any]:
     action = "UNKNOWN"
     target = None
 
-    # 1. Greetings
-    if text_lower in ["hi", "hello", "hey", "greetings", "who are you", "help", "hi there"] or any(text_lower.startswith(g) for g in ["hi ", "hello ", "hey "]):
+    # 1. Informational Questions
+    if any(text_lower.startswith(q) for q in ["what is ", "what's ", "explain ", "tell me about ", "define ", "how does "]):
+        action = "EXPLAIN_AWS"
+        # Extract target concept
+        for prefix in ["what is ", "what's ", "explain ", "tell me about ", "define ", "how does "]:
+            if text_lower.startswith(prefix):
+                target = text[len(prefix):].strip("? ")
+                break
+
+    # 2. Greetings
+    elif text_lower in ["hi", "hello", "hey", "greetings", "who are you", "help", "hi there"] or any(text_lower.startswith(g) for g in ["hi ", "hello ", "hey "]):
         action = "GREETING"
     
-    # 2. Critical Destructive Actions (Checked BEFORE Read operations)
+    # 3. Critical Destructive Actions (Checked BEFORE Read operations)
     elif ("delete" in text_lower or "remove" in text_lower or "destroy" in text_lower) and ("s3" in text_lower or "bucket" in text_lower):
         action = "DELETE_S3"
     elif ("terminate" in text_lower or "destroy" in text_lower) and ("ec2" in text_lower or "server" in text_lower or "instance" in text_lower):
@@ -75,13 +86,13 @@ def _fallback_keyword_parser(user_text: str) -> Dict[str, Any]:
     elif ("delete" in text_lower or "terminate" in text_lower or "destroy" in text_lower) and "account" in text_lower:
         action = "DELETE_ACCOUNT"
         
-    # 3. High Risk Actions
+    # 4. High Risk Actions
     elif "stop" in text_lower:
         action = "STOP_EC2"
     elif "start" in text_lower:
         action = "START_EC2"
         
-    # 4. Low Risk Read Operations
+    # 5. Low Risk Read Operations
     elif any(k in text_lower for k in ["s3", "bucket"]):
         action = "READ_S3"
     elif any(k in text_lower for k in ["ec2", "server", "instance", "virtual machine"]):
@@ -89,17 +100,18 @@ def _fallback_keyword_parser(user_text: str) -> Dict[str, Any]:
     elif any(k in text_lower for k in ["account", "whoami", "identity"]):
         action = "READ_ACCOUNT"
 
-    # Extraction heuristic for target
-    words = text.split()
-    for i, w in enumerate(words):
-        if w.lower() in ["server", "instance", "bucket", "target"] and i + 1 < len(words):
-            target = words[i + 1]
+    # Extraction heuristic for target if not already set
+    if not target:
+        words = text.split()
+        for i, w in enumerate(words):
+            if w.lower() in ["server", "instance", "bucket", "target"] and i + 1 < len(words):
+                target = words[i + 1]
 
     return {
         "action": action,
         "target": target,
         "raw_request": user_text,
-        "confidence": "high" if action == "GREETING" else ("medium" if action != "UNKNOWN" else "low"),
+        "confidence": "high" if action in ["GREETING", "EXPLAIN_AWS"] else ("medium" if action != "UNKNOWN" else "low"),
         "fallback_used": True
     }
 
@@ -119,13 +131,20 @@ def _extract_response_text(response) -> str:
     return ""
 
 
+_notice_printed = False
+
 def interpret_request(user_text: str) -> Dict[str, Any]:
     """
     Calls Gemini API using google-genai SDK to parse request into structured JSON.
     Enforces application/json output response mime type.
     Falls back gracefully to keyword parser if API key is invalid or request fails.
     """
+    global _notice_printed
+
     if not config.GEMINI_API_KEY or config.GEMINI_API_KEY == "your_key_here":
+        if not _notice_printed:
+            print(" ℹ️  [Notice: GEMINI_API_KEY not found in .env file. Using fallback keyword parser.]")
+            _notice_printed = True
         return _fallback_keyword_parser(user_text)
 
     candidate_models = [config.GEMINI_MODEL_NAME, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"]
@@ -168,3 +187,32 @@ def interpret_request(user_text: str) -> Dict[str, Any]:
             last_error = e
 
     return _fallback_keyword_parser(user_text)
+
+
+def generate_explanation(concept: str) -> str:
+    """Generates an informational explanation for an AWS concept using Gemini LLM."""
+    default_explanations = {
+        "ec2": "Amazon EC2 (Elastic Compute Cloud) provides resizable virtual servers in the cloud. It allows you to run applications on demand without managing physical hardware.",
+        "s3": "Amazon S3 (Simple Storage Service) is an object storage service offering high availability, data durability, and scalability for data backups, static assets, and file storage.",
+        "account": "An AWS Account is the top-level container for all your Amazon Web Services resources, IAM identities, billing data, and cloud infrastructure policy configurations."
+    }
+
+    concept_lower = (concept or "").lower().strip()
+    for key, text in default_explanations.items():
+        if key in concept_lower:
+            return text
+
+    if config.GEMINI_API_KEY and config.GEMINI_API_KEY != "your_key_here":
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                from google import genai
+                client = genai.Client(api_key=config.GEMINI_API_KEY)
+                prompt = f"Provide a concise, 2-sentence explanation of what {concept} is in AWS Cloud Computing."
+                res = client.models.generate_content(model=config.GEMINI_MODEL_NAME, contents=prompt)
+                if res.text:
+                    return res.text.strip()
+        except Exception:
+            pass
+
+    return f"{concept.upper()} is an Amazon Web Services (AWS) cloud service or concept."

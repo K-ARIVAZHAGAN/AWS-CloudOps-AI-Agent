@@ -58,6 +58,9 @@ class CloudOpsAgent:
             executed = True
             if action == "GREETING":
                 print(f"\n👋 {tool_output}")
+            elif action == "EXPLAIN_AWS":
+                print(f"\n💡 EXPLANATION:")
+                print(f"   {tool_output}")
             else:
                 print(f"\n✅ SUCCESS ({risk} Risk Auto-Executed):")
                 self._print_tool_output(action, tool_output)
@@ -113,6 +116,8 @@ class CloudOpsAgent:
         clean_action = action.upper()
         if clean_action == "GREETING":
             return "Hello! I am your AWS CloudOps AI Assistant. I can help you inspect EC2 instances, list S3 buckets, start/stop servers, or view account info. How can I assist you today?"
+        elif clean_action == "EXPLAIN_AWS":
+            return gemini_client.generate_explanation(target or user_text)
         elif clean_action == "READ_EC2":
             return tools.read_ec2()
         elif clean_action == "READ_S3":

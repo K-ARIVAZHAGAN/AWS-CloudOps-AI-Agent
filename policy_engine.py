@@ -20,6 +20,7 @@ RISK_TABLE: Dict[str, str] = {
     "DELETE_S3": "CRITICAL",
     "DELETE_ACCOUNT": "CRITICAL",
     "GREETING": "LOW",
+    "EXPLAIN_AWS": "LOW",
     "UNKNOWN": "N/A"
 }
 
