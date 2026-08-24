@@ -54,7 +54,7 @@ class CloudOpsAgent:
 
         # Step 3: Branch on Policy Decision
         if decision == "EXECUTE":
-            tool_output = self._execute_tool(action, target)
+            tool_output = self._execute_tool(action, target, user_text)
             executed = True
             if action == "GREETING":
                 print(f"\n👋 {tool_output}")
@@ -77,7 +77,7 @@ class CloudOpsAgent:
 
             if approved:
                 approved_by = "operator"
-                tool_output = self._execute_tool(action, target)
+                tool_output = self._execute_tool(action, target, user_text)
                 executed = True
                 print(f"✅ APPROVED & EXECUTED ({risk} Risk):")
                 self._print_tool_output(action, tool_output)
@@ -112,12 +112,12 @@ class CloudOpsAgent:
             "tool_output": tool_output
         }
 
-    def _execute_tool(self, action: str, target: Optional[str]) -> Any:
+    def _execute_tool(self, action: str, target: Optional[str], raw_request: Optional[str] = None) -> Any:
         clean_action = action.upper()
         if clean_action == "GREETING":
             return "Hello! I am your AWS CloudOps AI Assistant. I can help you inspect EC2 instances, list S3 buckets, start/stop servers, or view account info. How can I assist you today?"
         elif clean_action == "EXPLAIN_AWS":
-            return gemini_client.generate_explanation(target or user_text)
+            return gemini_client.generate_explanation(target or raw_request or "aws")
         elif clean_action == "READ_EC2":
             return tools.read_ec2()
         elif clean_action == "READ_S3":
