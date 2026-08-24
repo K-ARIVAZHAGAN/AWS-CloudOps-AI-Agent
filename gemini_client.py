@@ -128,7 +128,7 @@ def interpret_request(user_text: str) -> Dict[str, Any]:
     if not config.GEMINI_API_KEY or config.GEMINI_API_KEY == "your_key_here":
         return _fallback_keyword_parser(user_text)
 
-    candidate_models = [config.GEMINI_MODEL_NAME, "gemini-3.6-flash", "gemini-3.5-flash"]
+    candidate_models = [config.GEMINI_MODEL_NAME, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"]
     candidate_models = list(dict.fromkeys(candidate_models))
 
     last_error = None
