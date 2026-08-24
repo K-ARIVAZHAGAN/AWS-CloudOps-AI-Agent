@@ -61,8 +61,9 @@ An AI-driven CloudOps assistant that interprets natural-language infrastructure 
 | `START_EC2` | **HIGH** | `REQUIRE_APPROVAL` | Start an EC2 instance |
 | `TERMINATE_EC2` | **CRITICAL** | `BLOCK` | Terminate an EC2 instance (Forbidden) |
 | `DELETE_S3` | **CRITICAL** | `BLOCK` | Delete an S3 bucket (Forbidden) |
-| `DELETE_ACCOUNT` | **CRITICAL** | `BLOCK` | w |
+| `DELETE_ACCOUNT` | **CRITICAL** | `BLOCK` | Terminate AWS Account (Forbidden) |
 | `GREETING` | **LOW** | `EXECUTE` | Respond to greetings / role queries |
+| `EXPLAIN_AWS` | **LOW** | `EXECUTE` | Explain AWS concepts / definition queries |
 | `UNKNOWN` | **N/A** | `CLARIFY` | Request user clarification |
 
 ---
